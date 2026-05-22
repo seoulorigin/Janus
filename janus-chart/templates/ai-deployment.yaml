@@ -1,0 +1,65 @@
+# /data/janus/janus-chart/templates/ai-deployment.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: janus-ai-engine
+spec:
+  replicas: {{ .Values.aiEngine.replicaCount }}
+  selector:
+    matchLabels:
+      app: janus-ai-engine
+  template:
+    metadata:
+      labels:
+        app: janus-ai-engine
+    spec:
+      # =======================================================================
+      # [조건부 InitContainer] type이 "external"일 때만 S3 다운로더 발동!
+      # B님의 아키텍처 맵(Tetragon_찐_2.jpg) 완벽 구현
+      # =======================================================================
+      {{- if and .Values.mlUpdateStrategy.enabled (eq .Values.mlUpdateStrategy.type "external") }}
+      initContainers:
+        - name: s3-model-downloader
+          image: amazon/aws-cli:latest
+          command:
+            - "sh"
+            - "-c"
+            - "aws s3 cp {{ .Values.mlUpdateStrategy.external.s3BucketUrl }}/{{ .Values.mlUpdateStrategy.external.modelFileName }} /app/models/"
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              value: {{ .Values.mlUpdateStrategy.external.awsAccessKeyId | quote }}
+            - name: AWS_SECRET_ACCESS_KEY
+              value: {{ .Values.mlUpdateStrategy.external.awsSecretAccessKey | quote }}
+            - name: AWS_DEFAULT_REGION
+              value: {{ .Values.mlUpdateStrategy.external.awsRegion | quote }}
+          volumeMounts:
+            - name: model-volume
+              mountPath: /app/models
+      {{- end }}
+
+      containers:
+        - name: ai-inference-engine
+          image: "{{ .Values.aiEngine.image.repository }}:{{ .Values.aiEngine.image.tag }}"
+          env:
+            - name: MODEL_PATH
+              value: "/app/models/{{ if eq .Values.mlUpdateStrategy.type "external" }}{{ .Values.mlUpdateStrategy.external.modelFileName }}{{ else }}model.pkl{{ end }}"
+          
+          # 파이썬 추론 코드는 볼륨의 종류가 무엇이든 /app/models 경로만 바라봅니다.
+          volumeMounts:
+            - name: model-volume
+              mountPath: /app/models
+
+      # =======================================================================
+      # [조건부 볼륨 스위칭] type에 따라 K8S 디스크(PVC) vs 임시 디스크(emptyDir) 교체
+      # =======================================================================
+      volumes:
+        - name: model-volume
+          {{- if and .Values.mlUpdateStrategy.enabled (eq .Values.mlUpdateStrategy.type "embedded") }}
+          # 내장형: 아까 만든 공유 하드디스크(PVC)를 연결
+          persistentVolumeClaim:
+            claimName: janus-model-pvc
+          {{- else }}
+          # 외장형: InitContainer가 S3에서 받아올 임시 창고(emptyDir) 연결
+          emptyDir: {}
+          {{- end }}

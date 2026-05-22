@@ -1,0 +1,33 @@
+# 1. Helm & Kubernetes
+# (핵심) helm dependency update로 다운받은 외부 차트 압축파일은 올리지 않습니다.
+# Chart.yaml에 명세가 있으므로 다른 환경에서 언제든 다시 받을 수 있습니다.
+janus-chart/charts/*
+!janus-chart/charts/.gitkeep
+janus-chart/Chart.lock
+
+# 2. Python & ML (향후 AI 엔진 개발용)
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# ML 모델 및 대용량 데이터 파일 (GitHub 용량 초과 방지)
+*.pkl
+*.h5
+*.model
+*.csv
+*.dat
+*.log
+
+# 3. 보안 및 환경 변수
+.env
+*.pem
+*.key
+secret*.yaml
+
+# 4. OS 및 에디터 (B님이 쓰시는 VS Code 등)
+.vscode/
+.idea/
+.DS_Store

@@ -1,0 +1,47 @@
+# /data/janus/janus-chart/templates/dt-engine.yaml
+
+apiVersion: apps/v1
+# 💡 핵심: 사용자가 values.yaml에 적은 값을 그대로 읽어와 배포 형태를 결정합니다!
+kind: {{ if eq .Values.dtEngine.deploymentMode "daemonset" }}DaemonSet{{ else }}Deployment{{ end }}
+metadata:
+  name: janus-dt-engine
+  labels:
+    app.kubernetes.io/name: janus-dt-engine
+spec:
+  # 💡 Deployment 모드일 때만 파드 개수(replicas) 옵션을 활성화합니다.
+  {{- if eq .Values.dtEngine.deploymentMode "deployment" }}
+  replicas: 1 
+  {{- end }}
+  
+  selector:
+    matchLabels:
+      app: janus-dt-engine
+  template:
+    metadata:
+      labels:
+        app: janus-dt-engine
+    spec:
+      # --- 여기서부터는 DaemonSet이든 Deployment든 100% 동일한 컨테이너 설정입니다 ---
+      containers:
+        - name: dt-inference-engine
+          image: "{{ .Values.dtEngine.image.repository }}:{{ .Values.dtEngine.image.tag }}"
+          
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: {{ if .Values.embeddedKafka.enabled }}"my-janus-kafka:9092"{{ else }}{{ .Values.externalKafka.bootstrapServers | quote }}{{ end }}
+            - name: MODEL_PATH
+              value: "/app/models/model.pkl"
+          
+          volumeMounts:
+            - name: model-volume
+              mountPath: /app/models
+
+      # ML 업데이트 전략에 따른 볼륨 연결 로직
+      volumes:
+        - name: model-volume
+          {{- if and .Values.mlUpdateStrategy.enabled (eq .Values.mlUpdateStrategy.type "embedded") }}
+          persistentVolumeClaim:
+            claimName: janus-model-pvc
+          {{- else }}
+          emptyDir: {}
+          {{- end }}

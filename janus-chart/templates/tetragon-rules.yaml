@@ -1,0 +1,30 @@
+{{- if .Values.tetragon.enabled -}}
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: janus-cryptojacking-policy
+  labels:
+    app.kubernetes.io/name: janus
+spec:
+  # 1. 사용자가 지정한 네임스페이스의 파드만 선별 감시!
+  podSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: {{ .Values.tetragon.targetNamespace | quote }}
+  
+  kprobes:
+  # 2. 사용자가 values.yaml에 적은 시스템 콜 목록을 빙글빙글 돌면서(range) 자동 생성!
+  {{- range .Values.tetragon.captureSyscalls }}
+  - call: {{ . | quote }}
+    syscall: true
+    args:
+      - index: 0
+        type: "string"
+    
+    # 3. [💡 사용자 설정 연관 포인트] 사용자가 mitigationMode를 "active"로 설정했을 때만 사살(Sigkill) 코드 삽입!
+    {{- if eq $.Values.tetragon.mitigationMode "active" }}
+    selectors:
+      - matchActions:
+        - action: Sigkill
+    {{- end }}
+  {{- end }}
+{{- end -}}

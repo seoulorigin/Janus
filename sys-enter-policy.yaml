@@ -1,0 +1,17 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: sys-enter-tracker
+  namespace: kube-system
+spec:
+  kprobes:
+    # 커널의 sys_enter 진입점을 후킹
+    - call: "sys_enter"
+      syscall: false
+      args:
+        # 첫 번째 인자인 RAX 레지스터(시스템 콜 고유 번호)를 정수형태로 추출
+        - index: 0
+          type: "long"
+      selectors:
+        - matchActions:
+            - action: Post

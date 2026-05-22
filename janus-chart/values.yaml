@@ -1,0 +1,144 @@
+# =====================================================================
+# [오픈소스 Janus] 사용자 맞춤형 인프라 제어 설정 (Values)
+# =====================================================================
+
+# ---------------------------------------------------------------------
+# [💡 사용자 설정 연관 포인트 1] 카프카(Kafka) 인프라 선택 스위치
+# ---------------------------------------------------------------------
+
+# 옵션 A: 내부 카프카 자동 배포 (기본값)
+# 카프카가 없는 사용자를 위해 헬름이 미니큐브/K8S에 직접 카프카를 띄워줍니다.
+embeddedKafka:
+  enabled: true
+  
+  # [💡 사용자 설정 연관 포인트 2] 컴퓨터 리소스 설정 (사용자 사양에 맞춰 튜닝)
+  # 비트나미 카프카가 사용할 자원과 노드 개수를 제어합니다.
+  kafka:
+    replicaCount: 3
+    resources:
+      requests:
+        cpu: "250m"
+        memory: "1024Mi"
+      limits:
+        cpu: "1"
+        memory: "2048Mi"
+    persistence:
+      enabled: true
+      size: "5Gi"
+    kraft:
+      enabled: true
+    provisioning:
+      topics:
+        - name: "tetragon-events"
+          partitions: 3
+          replicationFactor: 3
+
+# 옵션 B: 기존 외부 카프카 연동 (기업/상용 사용자용)
+# 만약 위의 embeddedKafka.enabled를 false로 끄면, 아래 주소를 사용하여 외부 카프카와 통신합니다.
+externalKafka:
+  bootstrapServers: "corporate-kafka-broker:9092"
+  topic: "tetragon-events"
+
+# ---------------------------------------------------------------------
+# [💡 사용자 설정 연관 포인트 3] 테트라곤(Tetragon) 보안 센서 제어
+# ---------------------------------------------------------------------
+tetragon:
+  # 사용자가 테트라곤 보안 룰 배포를 원할 때 켭니다.
+  enabled: true
+  
+  # 감시를 집중할 대상 가상 방(네임스페이스)
+  targetNamespace: "default"
+  
+  # [사용자 핵심 선택] 발견 시 대응 정책
+  # active: 커널 수준에서 프로세스 즉각 사살 (Sigkill)
+  # monitor: 카프카로 로그만 전송하고 시스템 개입 안 함
+  mitigationMode: "monitor"
+  
+  # AI 분석(5-gram)을 위해 카프카로 퍼 나를 핵심 시스템 콜 목록
+  captureSyscalls:
+    - "sys_execve"
+    - "sys_read"
+    - "sys_write"
+
+# ---------------------------------------------------------------------
+# [💡 사용자 설정 연관 포인트 4] 파이썬 AI 추론 엔진 제어
+# ---------------------------------------------------------------------
+aiEngine:
+  # 사용자의 서버 화력에 맞게 AI 엔진을 몇 대 띄울지 결정 (기본 1대)
+  replicaCount: 1
+
+  image:
+    repository: "b-janus/ai-inference-engine"
+    tag: "latest"
+    pullPolicy: "IfNotPresent"
+
+  # [💡 사용자 설정 연관 포인트 5] 컴퓨터 리소스 설정
+  # 사용자의 K8S 노드 사양에 맞게 AI 엔진의 메모리/CPU 한계선을 조율합니다.
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "1"
+      memory: "2Gi"
+
+# =====================================================================
+# [ML 모델 재학습 & 업데이트 하이브리드 파이프라인]
+# =====================================================================
+mlUpdateStrategy:
+  # 기본 모델만 사용할 경우 (업데이트 안함) false
+  enabled: false
+  
+  # 사용자 선택지: "embedded" (내부 자동 학습) OR "external" (사용자 자체 S3 연동)
+  type: "embedded"
+
+  # -----------------------------------------------------------------
+  # [옵션 A] 내장형 (Embedded) 설정
+  # K8S 내부에 PVC를 만들고, CronJob을 띄워 주기적으로 카프카 데이터를 읽어 재학습
+  # -----------------------------------------------------------------
+  embedded:
+    schedule: "0 2 * * 0" # 매주 일요일 새벽 2시에 재학습 파드 가동
+    image:
+      repository: "b-janus/ai-train-engine"
+      tag: "latest"
+    pvc:
+      size: "10Gi"        # 데이터셋 및 모델을 저장할 K8S 내부 가상 하드디스크 크기
+      accessMode: "ReadWriteMany" # 여러 파드가 동시에 읽고 쓸 수 있는 권한
+
+  # -----------------------------------------------------------------
+  # [옵션 B] 외장형 (External) S3 연동 설정 (B님의 원래 아키텍처 맵 구현)
+  # InitContainer가 가동되어 사용자의 S3에서 최신 모델을 emptyDir로 다운로드
+  # -----------------------------------------------------------------
+  external:
+    s3BucketUrl: "s3://my-enterprise-ml-models/janus"
+    modelFileName: "latest_dt_model.pkl"
+    # (주의) 실무에서는 Secret으로 관리해야 하지만, 테스트를 위해 명시적으로 개방
+    awsAccessKeyId: "YOUR_AWS_ACCESS_KEY"
+    awsSecretAccessKey: "YOUR_AWS_SECRET_KEY"
+    awsRegion: "ap-northeast-2"
+
+# =====================================================================
+# [💡 사용자 설정 연관 포인트] DT(의사결정나무) 추론 엔진 하이브리드 제어
+# =====================================================================
+dtEngine:
+  # [★핵심 스위치] 
+  # "daemonset" : (기본값) 모든 워커 노드마다 1개씩 배치하여 네트워크 지연 없이 즉각 차단
+  # "deployment" : (비용 절감) 중앙 노드에 지정된 개수만 띄워 전체 K8s 자원 절약
+  deploymentMode: "daemonset"
+  
+  # deployment 모드일 때만 작동하는 파드 개수
+  replicaCount: 1 
+
+  image:
+    repository: "b-janus/dt-inference-engine"
+    tag: "latest"
+    pullPolicy: "IfNotPresent"
+
+  # DT는 매우 가벼우므로 자원 할당량을 최소화합니다.
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"

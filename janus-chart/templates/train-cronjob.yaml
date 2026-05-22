@@ -1,0 +1,49 @@
+# 사용자가 mlUpdateStrategy를 켜고, type을 "embedded"로 했을 때만 생성!
+{{- if and .Values.mlUpdateStrategy.enabled (eq .Values.mlUpdateStrategy.type "embedded") }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: janus-model-trainer
+  labels:
+    app.kubernetes.io/name: janus-trainer
+spec:
+  # 1. values.yaml에서 사용자가 설정한 스케줄(예: 매주 일요일 자정)을 동적 주입
+  schedule: {{ .Values.mlUpdateStrategy.embedded.schedule | quote }}
+  
+  # [실무 팁] 이전 학습이 끝나기도 전에 다음 학습 스케줄이 오면 겹치지 않게 방지 (메모리 폭발 방지)
+  concurrencyPolicy: Forbid 
+  
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: janus-trainer
+        spec:
+          # 파드가 임무를 수행하다가 뻗으면 다시 시도(OnFailure), 성공하면 그대로 소멸
+          restartPolicy: OnFailure 
+          
+          containers:
+            - name: train-engine
+              # 우리가 나중에 만들 '재학습 전용 파이썬 코드' 도커 이미지 주소
+              image: "{{ .Values.mlUpdateStrategy.embedded.image.repository }}:{{ .Values.mlUpdateStrategy.embedded.image.tag }}"
+              
+              # 재학습 코드도 카프카에 쌓인 원시 데이터를 읽어야 하므로 주소 주입
+              env:
+                - name: KAFKA_BOOTSTRAP_SERVERS
+                  value: {{ if .Values.embeddedKafka.enabled }}"my-janus-kafka:9092"{{ else }}{{ .Values.externalKafka.bootstrapServers | quote }}{{ end }}
+                - name: KAFKA_TOPIC
+                  value: {{ if .Values.embeddedKafka.enabled }}"tetragon-events"{{ else }}{{ .Values.externalKafka.topic | quote }}{{ end }}
+                - name: MODEL_PATH
+                  value: "/app/models/model.pkl"
+              
+              # 2. 가장 중요한 부분! 추론 엔진이 물고 있는 것과 '똑같은' 공유 디스크(PVC)를 연결
+              volumeMounts:
+                - name: model-volume
+                  mountPath: /app/models
+          
+          volumes:
+            - name: model-volume
+              persistentVolumeClaim:
+                claimName: janus-model-pvc
+{{- end }}
