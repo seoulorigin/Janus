@@ -9,7 +9,7 @@
 # 옵션 A: 내부 카프카 자동 배포 (기본값)
 # 카프카가 없는 사용자를 위해 헬름이 미니큐브/K8S에 직접 카프카를 띄워줍니다.
 embeddedKafka:
-  enabled: true
+  enabled: true # Chart.yaml ; Kafka 설치
   
   # [💡 사용자 설정 연관 포인트 2] 컴퓨터 리소스 설정 (사용자 사양에 맞춰 튜닝)
   # 비트나미 카프카가 사용할 자원과 노드 개수를 제어합니다.
@@ -142,3 +142,36 @@ dtEngine:
     limits:
       cpu: "500m"
       memory: "512Mi"
+
+kafka:
+  # 1. B님의 레거시 리포지토리 지정 (Artifact Hub 공지 반영)
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/kafka
+    tag: 4.0.0-debian-12-r10
+    pullPolicy: Always  # 헬름이 강제로 땡겨오도록 보장
+
+  # 2. [🔥핵심 패치] Init 컨테이너(os-shell) 통신 에러 해결을 위한 공식 규격
+  volumePermissions:
+    enabled: true
+    image:
+      registry: docker.io
+      repository: bitnami/os-shell
+      tag: 12-debian-12-r23
+      pullPolicy: Always
+
+  # 3. 자원 다이어트를 위한 KRaft 모드 활성화
+  zookeeper:
+    enabled: false
+  kraft:
+    enabled: true
+
+  # 4. 단일 노드(브로커 1개) 실행 및 메모리 강제 제한
+  broker:
+    replicaCount: 1
+    heapOpts: "-Xmx512m -Xms512m"
+
+  # 5. 외부 파이썬 코드 통신을 위한 포트 오픈 설정
+  listeners:
+    client:
+      protocol: PLAINTEXT

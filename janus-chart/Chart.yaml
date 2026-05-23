@@ -1,3 +1,5 @@
+## Chart 의존성 설정 (패키지)
+
 apiVersion: v2
 name: janus-chart
 description: Janus Cryptojacking Detection System Integrated Package
@@ -9,6 +11,6 @@ appVersion: "1.0.0"
 # 사용자가 values.yaml에서 embeddedKafka.enabled를 true로 했을 때만 카프카를 설치합니다.
 dependencies:
   - name: kafka
-    version: 31.3.1
-    repository: https://charts.bitnami.com/bitnami
+    version: 32.4.3
+    repository: oci://registry-1.docker.io/bitnamicharts
     condition: embeddedKafka.enabled
