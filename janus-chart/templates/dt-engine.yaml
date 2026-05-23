@@ -28,7 +28,7 @@ spec:
           
           env:
             - name: KAFKA_BOOTSTRAP_SERVERS
-              value: {{ if .Values.embeddedKafka.enabled }}"my-janus-kafka:9092"{{ else }}{{ .Values.externalKafka.bootstrapServers | quote }}{{ end }}
+              value: {{ if .Values.embeddedKafka.enabled }}"janus-app-kafka:9092"{{ else }}{{ .Values.externalKafka.bootstrapServers | quote }}{{ end }}
             # 프로젝트 내 joblib 파일명을 정확히 매칭
             - name: MODEL_PATH
               value: "/app/models/cryptojacking_dt_model.joblib"

@@ -26,21 +26,22 @@ def main():
         print(f"[ERROR] 모델 로드 실패: {e}", file=sys.stderr, flush=True)
         sys.exit(1)
 
-    KAFKA_BROKER = os.getenv("KAFKA_BROKER", "janus-release-kafka:9092")
+    KAFKA_BROKER = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "janus-app-kafka:9092")
     TOPIC_NAME = os.getenv("KAFKA_TOPIC", "tetragon-logs")
 
-    try:
-        consumer = KafkaConsumer(
-            TOPIC_NAME,
-            bootstrap_servers=[KAFKA_BROKER],
-            auto_offset_reset='latest',
-            enable_auto_commit=True,
-            value_deserializer=lambda x: json.loads(x.decode('utf-8'))
-        )
-        print(f"[Janus DT Engine] 카프카 토픽 [{TOPIC_NAME}] 연결 성공! 실시간 감시 시작...", flush=True)
-    except Exception as e:
-        print(f"[ERROR] 카프카 연결 실패: {e}", file=sys.stderr, flush=True)
-        sys.exit(1)
+    max_retries = 10
+    for i in range(max_retries):
+        try:
+            consumer = KafkaConsumer(
+                TOPIC_NAME,
+                bootstrap_servers=[KAFKA_BROKER],
+                # ... 나머지 설정 ...
+            )
+            print("카프카 연결 성공!", flush=True)
+            break
+        except NoBrokersAvailable:
+            print(f"카프카 대기 중... ({i+1}/{max_retries})", flush=True)
+            time.sleep(10)
 
     for message in consumer:
         log_data = message.value
