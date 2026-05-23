@@ -130,7 +130,7 @@ dtEngine:
   replicaCount: 1 
 
   image:
-    repository: "b-janus/dt-inference-engine"
+    repository: "seoulorigin/dt-inference-engine"
     tag: "latest"
     pullPolicy: "IfNotPresent"
 

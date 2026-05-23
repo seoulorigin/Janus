@@ -4,13 +4,16 @@ import json
 import joblib
 from kafka import KafkaConsumer
 
+import time
+from kafka.errors import NoBrokersAvailable
+
 # 💡 [핵심 팩트] B님이 미리 만들어두신 전처리 모듈과 함수를 임포트합니다.
-from preprocess import process_log_data 
+from preprocess import make_dt_5gram
 
 def main():
     print("[Janus DT Engine] 추론 서비스 기동 시작...", flush=True)
 
-    model_path = '/data/janus/models/cryptojacking_dt_model.joblib'
+    model_path = '/app/models/cryptojacking_dt_model.joblib'
     
     if not os.path.exists(model_path):
         print(f"[ERROR] 모델 파일을 찾을 수 없습니다: {model_path}", file=sys.stderr, flush=True)
@@ -45,7 +48,7 @@ def main():
         try:
             # 1. 💡 B님의 전처리 함수에 카프카 Raw 로그를 통째로 던집니다.
             # 이 함수는 내부에서 연산을 거친 뒤, 모델이 먹을 수 있는 형태(DataFrame 또는 2D Array)로 반환해야 합니다.
-            input_features = process_log_data(log_data)
+            input_features = make_dt_5gram(log_data)
             
             # 만약 전처리 로직에서 필터링되어 분석할 필요가 없는 로그라면 None을 반환하도록 설계할 수도 있습니다.
             if input_features is None:

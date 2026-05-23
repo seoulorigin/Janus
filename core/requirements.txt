@@ -1,5 +1,5 @@
 # 카프카 로그 수신용
-kafka-python==2.0.2
+kafka-python-ng==2.2.3
 
 # 머신러닝 모델(.joblib) 로드 및 추론용
 scikit-learn==1.4.2
