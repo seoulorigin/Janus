@@ -1,20 +1,16 @@
 import os
 import sys
-import json
 import joblib
 from kafka import KafkaConsumer
-
 import time
 from kafka.errors import NoBrokersAvailable
-
-# 💡 [핵심 팩트] B님이 미리 만들어두신 전처리 모듈과 함수를 임포트합니다.
 from preprocess import make_dt_5gram
 
 def main():
     print("[Janus DT Engine] 추론 서비스 기동 시작...", flush=True)
 
     model_path = '/app/models/cryptojacking_dt_model.joblib'
-    
+
     if not os.path.exists(model_path):
         print(f"[ERROR] 모델 파일을 찾을 수 없습니다: {model_path}", file=sys.stderr, flush=True)
         sys.exit(1)
@@ -35,7 +31,7 @@ def main():
             consumer = KafkaConsumer(
                 TOPIC_NAME,
                 bootstrap_servers=[KAFKA_BROKER],
-                # ... 나머지 설정 ...
+                auto_offset_reset='latest',
             )
             print("카프카 연결 성공!", flush=True)
             break
@@ -44,26 +40,34 @@ def main():
             time.sleep(10)
 
     for message in consumer:
-        log_data = message.value
-        
         try:
-            # 1. 💡 B님의 전처리 함수에 카프카 Raw 로그를 통째로 던집니다.
-            # 이 함수는 내부에서 연산을 거친 뒤, 모델이 먹을 수 있는 형태(DataFrame 또는 2D Array)로 반환해야 합니다.
-            input_features = make_dt_5gram(log_data)
-            
-            # 만약 전처리 로직에서 필터링되어 분석할 필요가 없는 로그라면 None을 반환하도록 설계할 수도 있습니다.
-            if input_features is None:
+            raw_text = message.value.decode('utf-8').strip()
+            print(f"[DEBUG] 받은 원본 데이터: {repr(raw_text)}", flush=True)
+
+            tokens = raw_text.split()
+            syscall_list = []
+            for t in tokens:
+                t = t.strip().lstrip('>')
+                if t.lstrip('-').isdigit():
+                    syscall_list.append(int(t))
+
+            print(f"[DEBUG] 파싱된 숫자 리스트: {syscall_list}", flush=True)
+
+            if len(syscall_list) < 5:
                 continue
 
-            # 2. 전처리된 깔끔한 데이터를 AI 모델에 찔러 넣습니다.
+            input_features = make_dt_5gram(syscall_list)
+
+            if input_features is None or len(input_features) == 0:
+                continue
+
             prediction = model.predict(input_features)[0]
             probability = model.predict_proba(input_features)[0]
 
-            # 3. 결과 관제 
-            if prediction == 1:
-                print(f"[🚨 CRITICAL] 크립토재킹 탐지! (확률: {probability[1]*100:.2f}%) | 타겟 데이터: {log_data}", flush=True)
+            if prediction in [0, 1]:
+                print(f"[CRITICAL] 크립토재킹 탐지! (class={prediction}, 확률: {max(probability)*100:.2f}%) | 입력: {syscall_list[:10]}", flush=True)
             else:
-                pass # 정상 로그는 서버 부하 방지를 위해 콘솔 출력을 생략 (필요시 활성화)
+                print(f"[정상] class={prediction} | 입력: {syscall_list[:10]}", flush=True)
 
         except Exception as eval_error:
             print(f"[WARN] 데이터 전처리 및 추론 중 에러 발생: {eval_error}", file=sys.stderr, flush=True)
